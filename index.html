@@ -1,0 +1,2003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flent · Growth Funnel</title>
+<link rel="icon" type="image/png" href="/favicon.png" />
+<!-- shared chrome — MUST stay on every gated page -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/auth-gate.js"></script>
+<script src="/nav.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --primary:#008E75; --ink:#15102E; --muted:#8C8C8C; --subtle:#BABABA;
+    --bg:#FCFBF7; --border:#e6e6e6; --danger:#C64747;
+    --funnel:#5B9BD5;
+    --shadow-card:0 1px 3px 0 rgba(0,0,0,.10),0 1px 2px -1px rgba(0,0,0,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--ink);
+    -webkit-font-smoothing:antialiased;line-height:1.45;padding:24px;}
+  .wrap{max-width:1240px;margin:0 auto;}
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header{display:flex;align-items:flex-end;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .favic{height:30px;width:30px;border-radius:8px;display:block;}
+  .brandlogo{height:16px;width:auto;display:block;opacity:.75;}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.02em;}
+  .sub{font-size:13px;color:var(--muted);margin-top:2px;}
+
+  /* ── Filter bar ──────────────────────────────────────────── */
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px;}
+  .fchip{
+    position:relative;display:inline-flex;align-items:center;gap:8px;
+    background:#fff;border:1.5px solid var(--border);border-radius:12px;
+    padding:9px 14px;cursor:pointer;font-size:13px;font-weight:500;
+    color:var(--ink);transition:border-color .15s;user-select:none;
+  }
+  .fchip:hover,.fchip.active{border-color:var(--primary);}
+  .fchip-label{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;}
+  .fchip-val{color:var(--primary);font-weight:600;white-space:nowrap;}
+  .fchip-clear{background:none;border:none;cursor:pointer;color:var(--muted);
+    font-size:18px;padding:0 0 0 2px;line-height:1;transition:color .12s;}
+  .fchip-clear:hover{color:var(--danger);}
+  .t-icon{font-family:Georgia,serif;font-style:italic;font-size:15px;
+    font-weight:700;color:var(--muted);flex-shrink:0;}
+
+  /* date popover */
+  .date-popover{
+    position:absolute;top:calc(100% + 8px);left:0;z-index:200;
+    background:#fff;border:1.5px solid var(--border);border-radius:14px;
+    padding:16px 18px;box-shadow:0 8px 28px rgba(0,0,0,.13);
+    display:none;min-width:310px;
+  }
+  .date-popover.open{display:block;}
+  .date-row{display:flex;gap:12px;align-items:flex-end;margin-bottom:14px;}
+  .date-field{display:flex;flex-direction:column;gap:5px;flex:1;}
+  .date-field label{font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.05em;}
+  .date-field input[type=date]{font-family:inherit;font-size:13px;
+    border:1.5px solid var(--border);border-radius:9px;padding:8px 10px;
+    color:var(--ink);outline:none;width:100%;}
+  .date-field input[type=date]:focus{border-color:var(--primary);}
+  .date-sep{color:var(--muted);padding-bottom:10px;}
+  .btn-apply{font-family:inherit;font-size:13px;font-weight:700;
+    background:var(--primary);color:#fff;border:none;border-radius:9px;
+    padding:10px 0;cursor:pointer;width:100%;}
+  .btn-apply:hover{opacity:.88;}
+  .utm-select{font-family:inherit;font-size:13px;font-weight:500;border:none;
+    outline:none;background:none;color:var(--ink);cursor:pointer;
+    appearance:none;-webkit-appearance:none;padding-right:18px;
+    max-width:160px;width:auto;}
+  .utm-select-wrap{position:relative;display:inline-flex;align-items:center;max-width:180px;}
+  .utm-select-wrap svg{position:absolute;right:0;pointer-events:none;color:var(--muted);}
+  .fchip:focus-within{border-color:var(--primary);}
+
+  /* ── Panels ──────────────────────────────────────────────── */
+  .panel{background:#fff;border:1.5px solid var(--border);border-radius:18px;
+    padding:22px 24px;box-shadow:var(--shadow-card);}
+  .panel-title{display:flex;align-items:center;justify-content:space-between;
+    font-size:15px;font-weight:700;letter-spacing:-.01em;margin-bottom:18px;}
+  .section-reload{display:inline-flex;align-items:center;gap:5px;font-family:inherit;
+    font-size:12px;font-weight:600;color:var(--muted);background:none;
+    border:1.5px solid var(--border);border-radius:8px;padding:5px 10px;
+    cursor:pointer;transition:color .12s,border-color .12s;line-height:1;}
+  .section-reload:hover{color:var(--primary);border-color:var(--primary);}
+  .section-reload svg{flex-shrink:0;}
+
+  /* ── Funnel chart ─────────────────────────────────────────── */
+  .funnel-stages{display:grid;margin-bottom:6px;}
+  .stage-lbl{font-size:12px;font-weight:600;color:var(--muted);
+    text-align:center;padding:0 4px;}
+  .stage-lbl:first-child{text-align:left;}
+  .stage-lbl:last-child{text-align:right;}
+  .funnel-chart-wrap{position:relative;}
+  .funnel-count-overlay{position:absolute;top:50%;left:0;transform:translateY(-50%);
+    pointer-events:none;padding-left:6px;display:flex;flex-direction:column;line-height:1.15;}
+  .funnel-big{font-size:38px;font-weight:800;letter-spacing:-.04em;}
+  .funnel-small{font-size:12px;color:var(--muted);font-weight:500;margin-top:1px;}
+  .funnel-footer{display:grid;margin-top:10px;}
+  .funnel-stat{text-align:center;padding:0 4px;}
+  .funnel-stat:first-child{text-align:left;}
+  .funnel-stat:last-child{text-align:right;}
+  .stat-pct{font-size:13px;font-weight:600;color:var(--muted);}
+  .stat-n{font-size:20px;font-weight:700;letter-spacing:-.02em;margin-top:2px;}
+
+  /* ── Metric cards grid ───────────────────────────────────── */
+  .metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;
+    margin-top:24px;}
+  @media(max-width:860px){.metrics-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.metrics-grid{grid-template-columns:1fr;}}
+  .mcard{background:#fff;border:1.5px solid var(--border);border-radius:18px;
+    padding:22px 24px;box-shadow:var(--shadow-card);}
+  .mcard-label{font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+  .mcard-value{font-size:44px;font-weight:800;letter-spacing:-.04em;
+    color:var(--ink);line-height:1;}
+  .mcard-sub{font-size:12px;color:var(--subtle);margin-top:8px;}
+
+  /* ── Pie chart ───────────────────────────────────────────── */
+  .pie-wrap{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  .pie-svg-wrap{flex-shrink:0;}
+  .pie-legend{display:flex;flex-direction:column;gap:7px;flex:1;min-width:140px;}
+  .pie-row{display:grid;grid-template-columns:10px 1fr auto auto;
+    align-items:center;gap:8px;font-size:12px;}
+  .pie-dot{width:8px;height:8px;border-radius:50%;}
+  .pie-lbl{color:var(--ink);font-weight:500;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  .pie-n{font-weight:700;text-align:right;font-variant-numeric:tabular-nums;}
+  .pie-pct{font-size:11px;color:var(--muted);text-align:right;min-width:36px;}
+
+  /* ── UTM toggle ─────────────────────────────────────────── */
+  .toggle-group{display:inline-flex;background:var(--bg);border:1.5px solid var(--border);
+    border-radius:10px;padding:3px;gap:2px;}
+  .toggle-btn{font-family:inherit;font-size:12px;font-weight:600;border:none;
+    border-radius:7px;padding:5px 13px;cursor:pointer;background:none;
+    color:var(--muted);transition:background .12s,color .12s;line-height:1;}
+  .toggle-btn.active{background:var(--primary);color:#fff;}
+  .toggle-btn:not(.active):hover{color:var(--ink);}
+
+  /* ── Bottom sections grid ────────────────────────────────── */
+  .bottom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:18px;margin-top:28px;align-items:start;}
+
+  /* ── Keyword table ───────────────────────────────────────── */
+  .kw-head{display:flex;justify-content:space-between;font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+    padding:0 4px 8px;border-bottom:1.5px solid var(--border);}
+  .kw-body{max-height:320px;overflow-y:auto;}
+  .kw-row{display:flex;justify-content:space-between;align-items:center;
+    padding:6px 4px;border-bottom:1px solid var(--border);font-size:13px;}
+  .kw-row:last-child{border-bottom:none;}
+  .kw-term{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;flex:1;padding-right:12px;}
+  .kw-count{font-weight:700;font-variant-numeric:tabular-nums;flex-shrink:0;min-width:40px;text-align:right;}
+  .kw-cpc{font-variant-numeric:tabular-nums;flex-shrink:0;min-width:54px;text-align:right;
+    color:var(--muted);font-size:12px;padding-left:10px;}
+  .kw-pct{font-variant-numeric:tabular-nums;flex-shrink:0;min-width:52px;text-align:right;
+    color:var(--muted);font-size:12px;padding-left:10px;}
+
+  /* ── States ──────────────────────────────────────────────── */
+  .loading-msg{text-align:center;padding:60px 0;color:var(--muted);font-size:14px;}
+  .error-msg{background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;
+    border-radius:12px;padding:14px 16px;font-size:13px;font-weight:500;}
+
+  footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--border);
+    font-size:11.5px;color:var(--subtle);line-height:1.5;}
+  footer b{color:var(--muted);font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <img class="favic" src="/favicon.png" alt="" />
+      <div>
+        <h1>Growth Funnel</h1>
+        <div class="sub">Flent Homes · demand analytics</div>
+      </div>
+    </div>
+    <img class="brandlogo" src="/flent-logo.png" alt="flent" />
+  </header>
+
+  <!-- ── Filter bar ─────────────────────────────────────────── -->
+  <div class="filters">
+    <div class="fchip" id="date-chip">
+      <span style="font-size:14px;color:var(--muted)">&#128197;</span>
+      <span class="fchip-label">Date range:</span>
+      <span class="fchip-val" id="date-val">All time</span>
+      <button class="fchip-clear" id="date-clear" style="display:none" aria-label="Clear">&#215;</button>
+      <div class="date-popover" id="date-popover">
+        <div class="date-row">
+          <div class="date-field">
+            <label for="date-from">From</label>
+            <input type="date" id="date-from" />
+          </div>
+          <span class="date-sep">–</span>
+          <div class="date-field">
+            <label for="date-to">To</label>
+            <input type="date" id="date-to" />
+          </div>
+        </div>
+        <button class="btn-apply" id="date-apply">Apply</button>
+      </div>
+    </div>
+
+    <div class="fchip" style="cursor:default">
+      <span class="fchip-label">UTM Source:</span>
+      <div class="utm-select-wrap">
+        <select id="utm-source" class="utm-select">
+          <option value="">All sources</option>
+        </select>
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg>
+      </div>
+    </div>
+    <button class="fchip" id="reload-btn" style="border-color:var(--border);gap:6px;">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+      <span style="font-size:13px;font-weight:600;color:var(--ink)">Reload</span>
+    </button>
+  </div>
+
+  <!-- ── Demand Funnel ──────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">
+      Demand Funnel
+      <button class="section-reload" id="reload-funnel" title="Reload funnel &amp; conversion metrics">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+        Reload
+      </button>
+    </div>
+    <div id="funnel-content"><div class="loading-msg">Loading funnel data…</div></div>
+  </div>
+
+  <!-- ── Metric cards ───────────────────────────────────────── -->
+  <div class="metrics-grid">
+    <div class="mcard">
+      <div class="mcard-label">Qualification Rate</div>
+      <div class="mcard-value" id="m-qual-rate">—</div>
+      <div class="mcard-sub">Qualified ÷ Total Leads × 100</div>
+    </div>
+    <div class="mcard">
+      <div class="mcard-label">Qualified → Visit Completed %</div>
+      <div class="mcard-value" id="m-qual-visit">—</div>
+      <div class="mcard-sub">Visit Completed ÷ Qualified × 100</div>
+    </div>
+    <div class="mcard">
+      <div class="mcard-label">Visit Completed → Move-In %</div>
+      <div class="mcard-value" id="m-visit-movein">—</div>
+      <div class="mcard-sub">Move-In ÷ Visit Completed × 100</div>
+    </div>
+  </div>
+
+  <!-- ── Meta Cost Efficiency strip ──────────────────────────── -->
+  <div id="meta-cost-section" style="margin-top:28px;display:none">
+    <div class="panel" style="padding:20px 24px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+        color:var(--muted);margin-bottom:18px">Meta · Cost Efficiency</div>
+      <div id="meta-cost-content"></div>
+    </div>
+  </div>
+
+  <!-- ── Website → Move-In conversion strip ──────────────────── -->
+  <div id="web-conv-section" style="margin-top:28px;display:none">
+    <div class="panel" style="padding:20px 24px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+        color:var(--muted);margin-bottom:18px">Website → Move-In Conversion</div>
+      <div id="web-conv-content"></div>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+
+    <!-- ── UTM Source breakdown (tabbed) ────────────────────── -->
+    <div class="panel">
+      <div class="panel-title">
+        UTM Source
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="toggle-group" id="utm-toggle">
+            <button class="toggle-btn active" data-tab="leads">Leads</button>
+            <button class="toggle-btn" data-tab="qualified">Qualified</button>
+            <button class="toggle-btn" data-tab="movein">Move-In</button>
+          </div>
+          <button class="section-reload" id="reload-utm" title="Reload UTM breakdown">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+            Reload
+          </button>
+        </div>
+      </div>
+      <div id="utm-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── % Organic Move-In ──────────────────────────────────── -->
+    <div id="organic-movein-section" class="panel">
+      <div class="panel-title">
+        % Organic Move-In
+        <button class="section-reload" id="reload-organic-movein" title="Reload organic move-in metric">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+          Reload
+        </button>
+      </div>
+      <div id="organic-movein-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── Performing Keywords (Google utm_term) ─────────────── -->
+    <div class="panel">
+      <div class="panel-title">
+        Performing Keywords
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="toggle-group" id="kw-toggle">
+            <button class="toggle-btn active" data-tab="leads">Leads</button>
+            <button class="toggle-btn" data-tab="qualified">Qualified</button>
+            <button class="toggle-btn" data-tab="movein">Move-In</button>
+          </div>
+          <button class="section-reload" id="reload-keywords" title="Reload keyword breakdown">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+            Reload
+          </button>
+        </div>
+      </div>
+      <div id="keywords-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── Google Spend ─────────────────────────────────────── -->
+    <div class="panel" id="google-spend-panel" style="display:none">
+      <div class="panel-title">
+        Google Spend
+        <button class="section-reload" id="reload-google-spend" title="Reload spend">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+          Reload
+        </button>
+      </div>
+      <div id="google-spend-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── Meta Spend ──────────────────────────────────────── -->
+    <div class="panel" id="meta-spend-panel" style="display:none">
+      <div class="panel-title">
+        Meta Spend
+        <button class="section-reload" id="reload-meta-spend" title="Reload spend">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+          Reload
+        </button>
+      </div>
+      <div id="meta-spend-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── UTM Content (Meta) ───────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-title">
+        UTM Content
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="toggle-group" id="mc-toggle">
+            <button class="toggle-btn active" data-tab="leads">Leads</button>
+            <button class="toggle-btn" data-tab="qualified">Qualified</button>
+            <button class="toggle-btn" data-tab="movein">Move-In</button>
+          </div>
+          <button class="section-reload" id="reload-meta-content" title="Reload UTM content">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+            Reload
+          </button>
+        </div>
+      </div>
+      <div id="meta-content-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+    <!-- ── Preferred Areas ───────────────────────────────────── -->
+    <div class="panel">
+      <div class="panel-title">
+        Preferred Areas
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="toggle-group" id="areas-toggle">
+            <button class="toggle-btn active" data-tab="organic">Organic</button>
+            <button class="toggle-btn" data-tab="inorganic">Inorganic</button>
+          </div>
+          <button class="section-reload" id="reload-areas" title="Reload preferred areas">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+            Reload
+          </button>
+        </div>
+      </div>
+      <div id="areas-content"><div class="loading-msg">Loading…</div></div>
+    </div>
+
+
+  </div>
+
+  <!-- ── Weekly Lead Trend ────────────────────────────────────── -->
+  <div id="weekly-trend-section" style="margin-top:32px;display:none">
+    <div class="panel" style="padding:24px 28px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+          color:var(--muted)">Weekly Trend</div>
+        <div class="toggle-group" id="weekly-toggle">
+          <button class="toggle-btn active" data-metric="visitors" data-color="#5B9BD5">Website Visits</button>
+          <button class="toggle-btn" data-metric="leads"    data-color="#008E75">Leads</button>
+          <button class="toggle-btn" data-metric="qualified" data-color="#F59E50">Qualified</button>
+          <button class="toggle-btn" data-metric="movein"   data-color="#9B8FD4">Move-In</button>
+        </div>
+      </div>
+      <div id="weekly-chart-content" style="min-height:180px"><div class="loading-msg">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ── Website Funnel section ─────────────────────────────── -->
+  <div id="web-funnel-section" style="margin-top:32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Website Funnel</div>
+      <button class="section-reload" id="reload-web-stats" title="Reload website data">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2v4H9"/><path d="M1 12V8h4"/><path d="M2.6 5A6 6 0 0 1 12.4 9"/><path d="M11.4 9A6 6 0 0 1 1.6 5"/></svg>
+        Reload
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+      <div class="panel" id="web-stats-panel">
+        <div class="panel-title">Traffic</div>
+        <div id="web-stats-content"><div class="loading-msg">Loading…</div></div>
+      </div>
+      <div class="panel" id="web-pages-panel">
+        <div class="panel-title">Top Property Pages</div>
+        <div id="web-pages-content"><div class="loading-msg">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Flent Homes · <b>Confidential</b> — internal use only · contains customer PII ·
+    do not distribute or share outside Flent. Data sourced from HubSpot.
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Colour palette for pie chart ─────────────────────────────
+  const PIE_COLORS = [
+    '#5B9BD5','#008E75','#F59E50','#9B8FD4','#E06464',
+    '#60C4D4','#70B9A5','#F4A261','#C64747','#A8C8E8',
+  ];
+
+  // ── State ────────────────────────────────────────────────────
+  const state = { startDate: null, endDate: null, utmSource: '' };
+
+  // Restore last-used filter from sessionStorage so a browser refresh doesn't
+  // reset to all-time while the user is mid-analysis.
+  (function restoreFilter() {
+    try {
+      const s = JSON.parse(sessionStorage.getItem('gf_filter') || '{}');
+      if (s.startDate) state.startDate = s.startDate;
+      if (s.endDate)   state.endDate   = s.endDate;
+    } catch (e) {}
+  })();
+
+  function saveFilter() {
+    try {
+      sessionStorage.setItem('gf_filter', JSON.stringify(
+        { startDate: state.startDate, endDate: state.endDate }
+      ));
+    } catch (e) {}
+  }
+
+  // ── Date chip ────────────────────────────────────────────────
+  const dateChip    = document.getElementById('date-chip');
+  const datePopover = document.getElementById('date-popover');
+  const dateFrom    = document.getElementById('date-from');
+  const dateTo      = document.getElementById('date-to');
+  const dateVal     = document.getElementById('date-val');
+  const dateClear   = document.getElementById('date-clear');
+
+  // Populate inputs with restored state
+  if (state.startDate) dateFrom.value = state.startDate;
+  if (state.endDate)   dateTo.value   = state.endDate;
+
+  dateChip.addEventListener('click', e => {
+    if (dateClear.contains(e.target) || datePopover.contains(e.target)) return;
+    const open = datePopover.classList.toggle('open');
+    dateChip.classList.toggle('active', open);
+  });
+  document.addEventListener('click', e => {
+    if (!dateChip.contains(e.target)) {
+      datePopover.classList.remove('open');
+      dateChip.classList.remove('active');
+    }
+  });
+  document.getElementById('date-apply').addEventListener('click', () => {
+    state.startDate = dateFrom.value || null;
+    state.endDate   = dateTo.value   || null;
+    updateDateLabel();
+    saveFilter();
+    datePopover.classList.remove('open');
+    dateChip.classList.remove('active');
+    refresh();
+  });
+  dateClear.addEventListener('click', e => {
+    e.stopPropagation();
+    state.startDate = null; state.endDate = null;
+    dateFrom.value = ''; dateTo.value = '';
+    updateDateLabel();
+    saveFilter();
+    refresh();
+  });
+
+  function updateDateLabel() {
+    const has = state.startDate || state.endDate;
+    dateClear.style.display = has ? '' : 'none';
+    if (!has) { dateVal.textContent = 'All time'; return; }
+    dateVal.textContent = [state.startDate, state.endDate]
+      .filter(Boolean).map(fmtDate).join(' – ');
+  }
+  function fmtDate(iso) {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('en-US',
+      { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  // ── UTM source dropdown ──────────────────────────────────────
+  // Populate the select with all known utm_source values (sorted by lead count).
+  async function populateUtmDropdown() {
+    const CACHE_KEY = 'flent_utm_sources_v1';
+    const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+    const select = document.getElementById('utm-source');
+
+    function applySources(sources) {
+      const existing = new Set([...select.options].map(o => o.value));
+      sources.filter(s => s && !existing.has(s)).forEach(src => {
+        const opt = document.createElement('option');
+        opt.value = src; opt.textContent = src;
+        const after = [...select.options].find(o => o.value && o.value.localeCompare(src) > 0);
+        select.insertBefore(opt, after || null);
+      });
+      if (state.utmSource) select.value = state.utmSource;
+    }
+
+    // Load from cache immediately — instant on repeat visits
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) {}
+    if (cached && cached.sources) applySources(cached.sources);
+
+    // Skip background scan if cache is fresh enough
+    if (cached && cached.cachedAt && Date.now() - cached.cachedAt < CACHE_TTL) return;
+
+    // Full scan to build / refresh the cache
+    const searchBody = {
+      filterGroups: [
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }] },
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }] },
+      ],
+      properties: ['utm_source'],
+      limit: 200,
+    };
+    const found = new Set();
+
+    function harvest(pages) {
+      let added = false;
+      for (const pg of pages)
+        for (const c of (pg.results || []))
+          if (c.properties && c.properties.utm_source) {
+            const s = c.properties.utm_source.trim();
+            if (s) { found.add(s); added = true; }
+          }
+      if (added) applySources([...found].sort());
+    }
+
+    try {
+      const first = await fetch('/api/hs-search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(searchBody),
+      }).then(r => r.json()).catch(() => ({ results: [] }));
+      harvest([first]);
+
+      const total = first.total || 0;
+      if (total > 200) {
+        const offsets = Array.from(
+          { length: Math.min(Math.ceil((total - 200) / 200), 49) },
+          (_, i) => (i + 1) * 200
+        );
+        for (let i = 0; i < offsets.length; i += 4) {
+          const pages = await Promise.all(
+            offsets.slice(i, i + 4).map(after =>
+              fetch('/api/hs-search', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...searchBody, after }),
+              }).then(r => r.json()).catch(() => ({ results: [] }))
+            )
+          );
+          harvest(pages);
+          if (i + 4 < offsets.length) await new Promise(r => setTimeout(r, 300));
+        }
+      }
+
+      // Save complete list to localStorage
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        sources: [...found].filter(Boolean).sort(),
+        cachedAt: Date.now(),
+      }));
+    } catch (e) { /* silently skip */ }
+  }
+
+  document.getElementById('utm-source').addEventListener('change', e => {
+    state.utmSource = e.target.value;
+    const isFiltered = state.utmSource.trim().length > 0;
+    setUtmBreakdownVisible(!isFiltered);
+    setOrganicMoveinVisible(!isFiltered);
+    setKeywordsVisible(isGoogleFilter());
+    setGoogleSpendVisible(isGoogleFilter());
+    setMetaSpendVisible(isMetaFilter());
+    setAreasVisible(!isFiltered);
+    setMetaContentVisible(isMetaFilter());
+    setMetaCostVisible(isMetaFilter());
+    setWeeklyTrendVisible(!isFiltered);
+    setWebStatsVisible(!isFiltered);
+    // Clear caches so stale data from previous UTM doesn't bleed in
+    _funnelStages = null; _metaSpendTotal = null;
+    refresh();
+  });
+
+  // ── Reload button ────────────────────────────────────────────
+  document.getElementById('reload-btn').addEventListener('click', () => refresh());
+
+  // ── HubSpot: date + utm filters ──────────────────────────────
+  function dateFilters() {
+    const f = [];
+    // Use UTC midnight so the range isn't shifted by the user's local timezone offset
+    if (state.startDate)
+      f.push({ propertyName: 'createdate', operator: 'GTE',
+               value: String(new Date(state.startDate + 'T00:00:00.000Z').getTime()) });
+    if (state.endDate)
+      f.push({ propertyName: 'createdate', operator: 'LTE',
+               value: String(new Date(state.endDate + 'T23:59:59.999Z').getTime()) });
+    return f;
+  }
+
+  // Uses two filterGroups (OR'd) so HubSpot never needs the IN operator.
+  // The IN operator intermittently returns 0 when combined with other property filters.
+  // tenantOnly=true restricts to customer_type=Tenant only (used for Move-In metric).
+  function buildQuery(stageFilters, tenantOnly) {
+    const extra = [...dateFilters()];
+    if (state.utmSource.trim())
+      extra.push({ propertyName: 'utm_source', operator: 'CONTAINS_TOKEN',
+                   value: state.utmSource.trim() });
+    const g1 = { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      ...stageFilters, ...extra] };
+    if (tenantOnly)
+      return { filterGroups: [g1], limit: 1, properties: ['createdate'] };
+    const g2 = { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, ...stageFilters, ...extra] };
+    return { filterGroups: [g1, g2], limit: 1, properties: ['createdate'] };
+  }
+
+  // Low-level: sends a pre-built query body, retries up to 3× on 429.
+  async function _fetchCount(body, attempt) {
+    attempt = attempt || 0;
+    const res = await fetch('/api/hs-search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (res.status === 429 && attempt < 3) {
+      await new Promise(r => setTimeout(r, 800 + attempt * 600));
+      return _fetchCount(body, attempt + 1);
+    }
+    if (data.error) throw new Error(data.error);
+    return typeof data.total === 'number' ? data.total : 0;
+  }
+
+  // Standard funnel query: two filterGroups (Tenant OR Tenant Lead) + stage filters.
+  function fetchCount(stageFilters, tenantOnly) {
+    return _fetchCount(buildQuery(stageFilters, tenantOnly));
+  }
+
+  // Callback Requested: the property stores both 'true' (boolean) and 'Yes' (legacy text)
+  // depending on how the entry was created. Use 4 EQ filterGroups to capture both values
+  // without any IN operator.
+  function fetchCallbackCount() {
+    const extra = [...dateFilters()];
+    if (state.utmSource.trim())
+      extra.push({ propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: state.utmSource.trim() });
+    const cb = val => ({ propertyName: 'dw_callback_requested', operator: 'EQ', value: val });
+    return _fetchCount({
+      filterGroups: [
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      cb('true'), ...extra] },
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      cb('Yes'),  ...extra] },
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, cb('true'), ...extra] },
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, cb('Yes'),  ...extra] },
+      ],
+      limit: 1, properties: ['createdate'],
+    });
+  }
+
+  async function loadFunnel() {
+    const webDataPromise = (async () => {
+      const utm = state.utmSource.trim();
+      if (!utm) {
+        // No filter — total unique visitors across all channels
+        let q = WEB_SB.from('web_daily').select('visitors,sessions');
+        if (state.startDate) q = q.gte('d', state.startDate);
+        if (state.endDate)   q = q.lte('d', state.endDate);
+        const { data } = await q;
+        return (data || []).reduce((a, r) => ({
+          visitors: a.visitors + (+r.visitors || 0),
+          sessions: a.sessions + (+r.sessions || 0),
+          label: 'Unique Visitors',
+        }), { visitors: 0, sessions: 0, label: 'Unique Visitors' });
+      } else {
+        // UTM selected — use channel sessions from web_sources as channel-specific visitor proxy
+        const channel = utm.charAt(0).toUpperCase() + utm.slice(1);
+        let q = WEB_SB.from('web_sources').select('sessions').ilike('channel', channel);
+        if (state.startDate) q = q.gte('d', state.startDate);
+        if (state.endDate)   q = q.lte('d', state.endDate);
+        const { data } = await q;
+        const sessions = (data || []).reduce((s, r) => s + (+r.sessions || 0), 0);
+        return { visitors: sessions, sessions, label: `${channel} Visitors` };
+      }
+    })();
+
+    const [total, callback, qualified, booked, completed, movein, webData] = await Promise.all([
+      fetchCount([]),
+      fetchCallbackCount(),  // captures both 'true' and 'Yes' stored values
+      fetchCount([{ propertyName: 'hs_lead_status',     operator: 'EQ', value: 'Qualified' }]),
+      fetchCount([{ propertyName: 'dw_visit_booked',    operator: 'EQ', value: 'true' }]),
+      fetchCount([{ propertyName: 'dw_visit_completed', operator: 'EQ', value: 'true' }]),
+      fetchCount([], true),  // Move-In: customer_type=Tenant only (excludes Tenant Lead)
+      webDataPromise,
+    ]);
+    const stages = [];
+    if (webData) stages.push({ label: webData.label, count: webData.visitors });
+    stages.push(
+      { label: 'Total Leads',        count: total     },
+      { label: 'Callback Requested', count: callback  },
+      { label: 'Qualified Leads',    count: qualified },
+      { label: 'Visits Booked',      count: booked    },
+      { label: 'Visits Completed',   count: completed },
+      { label: 'Move-In',            count: movein    },
+    );
+    return { stages, webData };
+  }
+
+  // ── UTM pie chart data ───────────────────────────────────────
+  // Intentionally excludes utm_source filter so you always see the full breakdown.
+  // Uses a single filterGroup with IN for customer_type — safe here because we're
+  // only combining it with date filters (no other property filters). The IN-operator
+  // bug only triggers when IN is combined with a different property filter (e.g.
+  // hs_lead_status), which is why the funnel queries use two filterGroups instead.
+  async function loadUTM() {
+    const filters = [
+      { propertyName: 'customer_type', operator: 'IN', values: ['Tenant', 'Tenant Lead'] },
+      ...dateFilters(),
+    ];
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filterGroups: [{ filters }] }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  // Qualified leads by UTM source — uses two filterGroups (Tenant OR Tenant Lead)
+  // instead of IN to avoid the IN-operator bug when combined with hs_lead_status.
+  async function loadQualUTM() {
+    const extra = [...dateFilters()];
+    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ', value: 'Qualified' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isQualified, ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isQualified, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  // ── Funnel SVG rendering ─────────────────────────────────────
+  function renderFunnel(stages) {
+    const VW = 1000, VH = 270, midY = VH / 2, maxH = VH * 0.86;
+    const colW = VW / stages.length;
+    const base = stages[0].count || 1;
+    const sh = n => n ? Math.max((n / base) * maxH, 2) : 2;
+
+    // Heights are capped at the previous stage so the funnel never expands visually.
+    // Actual counts/percentages remain accurate in the footer.
+    const heights = [];
+    let prevH = maxH;
+    for (const s of stages) {
+      const h = Math.min(sh(s.count), prevH);
+      heights.push(h);
+      prevH = h;
+    }
+
+    const traps = stages.slice(0, -1).map((s, i) => {
+      const x1 = i * colW, x2 = (i + 1) * colW;
+      const lh = heights[i], rh = heights[i + 1];
+      const [ly1, ly2] = [midY - lh / 2, midY + lh / 2];
+      const [ry1, ry2] = [midY - rh / 2, midY + rh / 2];
+      return `<polygon points="${x1},${ly1} ${x2},${ry1} ${x2},${ry2} ${x1},${ly2}" fill="var(--funnel)" opacity=".82"/>`;
+    }).join('');
+
+    // Cap rectangle for the last (Move-In) column
+    const lastH = heights[stages.length - 1];
+    const cap   = `<rect x="${(stages.length - 1) * colW}" y="${midY - lastH / 2}" width="${colW}" height="${lastH}" fill="var(--funnel)" opacity=".82"/>`;
+
+    const dividers = stages.slice(1).map((_, i) => {
+      const x = (i + 1) * colW;
+      return `<line x1="${x}" y1="0" x2="${x}" y2="${VH}" stroke="var(--border)" stroke-width="1.5"/>`;
+    }).join('');
+
+    const cols = `grid-template-columns:repeat(${stages.length},1fr)`;
+    const headers = stages.map(s => `<div class="stage-lbl">${s.label}</div>`).join('');
+    const footer  = stages.map((s, i) => {
+      if (i === 0) return '<div class="funnel-stat"></div>';
+      const pct = base > 0 ? ((s.count / base) * 100).toFixed(2) + ' %' : '—';
+      return `<div class="funnel-stat"><div class="stat-pct">${pct}</div><div class="stat-n">${s.count.toLocaleString()}</div></div>`;
+    }).join('');
+
+    return `
+      <div class="funnel-stages" style="${cols}">${headers}</div>
+      <div class="funnel-chart-wrap">
+        <svg width="100%" viewBox="0 0 ${VW} ${VH}" style="display:block">${traps}${cap}${dividers}</svg>
+        <div class="funnel-count-overlay">
+          <span class="funnel-big">${stages[0].count.toLocaleString()}</span>
+          <span class="funnel-small">count</span>
+        </div>
+      </div>
+      <div class="funnel-footer" style="${cols}">${footer}</div>`;
+  }
+
+  // ── Metric cards ─────────────────────────────────────────────
+  function pct(num, den) {
+    if (!den) return '—';
+    return ((num / den) * 100).toFixed(1) + '%';
+  }
+  function updateMetrics(stages) {
+    const find = label => (stages.find(s => s.label === label) || {}).count || 0;
+    const total     = find('Total Leads');
+    const qualified = find('Qualified Leads');
+    const completed = find('Visits Completed');
+    const movein    = find('Move-In');
+    document.getElementById('m-qual-rate').textContent    = pct(qualified, total);
+    document.getElementById('m-qual-visit').textContent   = pct(completed, qualified);
+    document.getElementById('m-visit-movein').textContent = pct(movein, completed);
+  }
+
+  function renderWebConvSection(webData, stages) {
+    const el = document.getElementById('web-conv-section');
+    if (!webData) { el.style.display = 'none'; return; }
+    el.style.display = '';
+
+    const find = label => (stages.find(s => s.label === label) || {}).count || 0;
+    const visitors  = webData.visitors;
+    const leads     = find('Total Leads');
+    const qualified = find('Qualified Leads');
+    const movein    = find('Move-In');
+
+    const N   = n => Number(n).toLocaleString('en-IN');
+    const pct2 = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
+
+    const steps = [
+      { label: webData.label || 'Unique Visitors', count: visitors,  conv: null,                    color: '#5B9BD5' },
+      { label: 'Leads',           count: leads,     conv: pct2(leads, visitors),   color: '#008E75' },
+      { label: 'Qualified',       count: qualified, conv: pct2(qualified, leads),  color: '#F59E50' },
+      { label: 'Move-In',         count: movein,    conv: pct2(movein, leads),     color: '#9B8FD4' },
+    ];
+
+    document.getElementById('web-conv-content').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0">
+        ${steps.map((s, i) => `
+          <div style="text-align:center;padding:0 12px;${i > 0 ? 'border-left:1px solid var(--border)' : ''}">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+              color:var(--muted);margin-bottom:8px">${s.label}</div>
+            <div style="font-size:32px;font-weight:800;letter-spacing:-.03em;color:${s.color}">${N(s.count)}</div>
+            ${s.conv !== null
+              ? `<div style="margin-top:8px;display:inline-block;background:${s.color}18;
+                  color:${s.color};font-size:12px;font-weight:700;padding:3px 10px;
+                  border-radius:100px">${s.conv} of visitors</div>`
+              : `<div style="margin-top:8px;font-size:12px;color:var(--subtle)">total website</div>`
+            }
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // ── Donut / pie chart rendering ──────────────────────────────
+  function renderPie(counts) {
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const total   = entries.reduce((s, [, n]) => s + n, 0);
+    if (!total) return '<div class="loading-msg" style="padding:20px 0">No data for selected range.</div>';
+
+    const CX = 110, CY = 110, R = 90, IR = 52;
+    let angle = -Math.PI / 2;
+
+    const slices = entries.map(([label, count], i) => {
+      const theta  = (count / total) * Math.PI * 2;
+      const end    = angle + theta;
+      const large  = theta > Math.PI ? 1 : 0;
+      const cos1   = Math.cos(angle), sin1 = Math.sin(angle);
+      const cos2   = Math.cos(end),   sin2 = Math.sin(end);
+      const d = [
+        `M ${CX + IR * cos1} ${CY + IR * sin1}`,
+        `L ${CX + R  * cos1} ${CY + R  * sin1}`,
+        `A ${R}  ${R}  0 ${large} 1 ${CX + R  * cos2} ${CY + R  * sin2}`,
+        `L ${CX + IR * cos2} ${CY + IR * sin2}`,
+        `A ${IR} ${IR} 0 ${large} 0 ${CX + IR * cos1} ${CY + IR * sin1}`,
+        'Z',
+      ].join(' ');
+      angle = end;
+      return { d, color: PIE_COLORS[i % PIE_COLORS.length], label, count,
+               pct: ((count / total) * 100).toFixed(1) };
+    });
+
+    const paths = slices.map(s =>
+      `<path d="${s.d}" fill="${s.color}" stroke="#fff" stroke-width="2"/>`
+    ).join('');
+
+    const centerLabel = `
+      <text x="${CX}" y="${CY - 7}" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif"
+        font-size="20" font-weight="800" fill="#15102E">${total.toLocaleString()}</text>
+      <text x="${CX}" y="${CY + 12}" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif"
+        font-size="11" fill="#8C8C8C">total leads</text>`;
+
+    const svg = `<svg width="160" height="160" viewBox="0 0 220 220" style="display:block">${paths}${centerLabel}</svg>`;
+
+    const legend = slices.map(s => `
+      <div class="pie-row">
+        <span class="pie-dot" style="background:${s.color}"></span>
+        <span class="pie-lbl" title="${s.label}">${s.label}</span>
+        <span class="pie-n">${s.count.toLocaleString()}</span>
+        <span class="pie-pct">${s.pct}%</span>
+      </div>`).join('');
+
+    return `<div class="pie-wrap">
+      <div class="pie-svg-wrap">${svg}</div>
+      <div class="pie-legend">${legend}</div>
+    </div>`;
+  }
+
+  // ── Per-section reload ───────────────────────────────────────
+  let _funnelGen        = 0;
+  let _utmGen           = 0;
+  let _organicMoveinGen = 0;
+  let _keywordsGen      = 0;
+  let _areasGen         = 0;
+
+  // ── UTM tab state ────────────────────────────────────────────
+  let utmTab   = 'leads'; // 'leads' | 'qualified' | 'movein'
+  const utmCache = {};    // keyed by tab; cleared on date/filter change
+
+  // ── Keywords tab state ───────────────────────────────────────
+  let kwTab   = 'leads'; // 'leads' | 'qualified' | 'movein'
+  const kwCache = {};    // keyed by tab; cleared on date/filter change
+
+  // ── Meta UTM Content tab state ───────────────────────────────
+  let mcTab   = 'leads';
+  const mcCache = {};
+
+  function reloadFunnel() {
+    const gen = ++_funnelGen;
+    document.getElementById('funnel-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    ['m-qual-rate','m-qual-visit','m-visit-movein'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+    });
+    loadFunnel()
+      .then(({ stages, webData }) => {
+        if (_funnelGen !== gen) return;
+        _funnelStages = stages;
+        document.getElementById('funnel-content').innerHTML = renderFunnel(stages);
+        updateMetrics(stages);
+        renderWebConvSection(webData, stages);
+        tryRenderMetaCost();
+      })
+      .catch(err => {
+        if (_funnelGen !== gen) return;
+        document.getElementById('funnel-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  // Move-In leads by UTM source — customer_type=Tenant only (same scope as funnel move-in).
+  async function loadMoveInUTM() {
+    const filters = [
+      { propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
+      ...dateFilters(),
+    ];
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filterGroups: [{ filters }] }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  function loaderForTab(tab) {
+    if (tab === 'qualified') return loadQualUTM;
+    if (tab === 'movein')    return loadMoveInUTM;
+    return loadUTM;
+  }
+
+  function reloadUTMTab(bustCache) {
+    if (bustCache) delete utmCache[utmTab];
+    if (utmCache[utmTab]) {
+      document.getElementById('utm-content').innerHTML = renderPie(utmCache[utmTab]);
+      return;
+    }
+    const gen = ++_utmGen;
+    document.getElementById('utm-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    loaderForTab(utmTab)()
+      .then(counts => {
+        if (_utmGen !== gen) return;
+        utmCache[utmTab] = counts;
+        document.getElementById('utm-content').innerHTML = renderPie(counts);
+      })
+      .catch(err => {
+        if (_utmGen !== gen) return;
+        document.getElementById('utm-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  // Fetches total move-ins (customer_type=Tenant) and inorganic move-ins
+  // (customer_type=Tenant AND utm_source contains 'meta' OR 'google').
+  // Two filterGroups for inorganic avoids the IN-operator + property-filter bug.
+  // Does NOT apply state.utmSource (section is hidden when that filter is active).
+  async function loadOrganicMovein() {
+    const extra = [...dateFilters()];
+    const [totalMovein, inorganic] = await Promise.all([
+      fetchCount([], true),
+      _fetchCount({
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
+                      { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'meta' },
+                      ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
+                      { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'google' },
+                      ...extra] },
+        ],
+        limit: 1, properties: ['createdate'],
+      }),
+    ]);
+    const organic = totalMovein - inorganic;
+    return { totalMovein, inorganic, organic };
+  }
+
+  function renderOrganicMovein({ totalMovein, inorganic, organic }) {
+    const pct = totalMovein > 0
+      ? (organic / totalMovein * 100).toFixed(1) + '%'
+      : '—';
+    const row = (label, val, sub) => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <div>
+          <div class="mcard-label" style="margin-bottom:0">${label}</div>
+          ${sub ? `<div class="mcard-sub" style="margin-top:1px">${sub}</div>` : ''}
+        </div>
+        <div style="font-size:18px;font-weight:700;letter-spacing:-.02em;flex-shrink:0">${val}</div>
+      </div>`;
+    return `
+      <div>
+        <div class="mcard-value" style="font-size:44px;line-height:1">${pct}</div>
+        <div class="mcard-sub" style="margin-top:6px;margin-bottom:18px">Organic ÷ Total Move-Ins × 100</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${row('Organic', organic.toLocaleString(), 'Not Meta or Google')}
+          ${row('Inorganic', inorganic.toLocaleString(), 'Meta + Google')}
+          <div style="border-top:1px solid var(--border);padding-top:10px;">
+            ${row('Total Move-Ins', totalMovein.toLocaleString())}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Google utm_term aggregation — two filterGroups to avoid the IN-operator bug.
+  // Does not apply state.utmSource; always scoped to google regardless of the filter chip.
+  async function loadKeywords() {
+    const extra = [...dateFilters()];
+    const isGoogle = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_term',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isGoogle, ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isGoogle, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  async function loadQualKeywords() {
+    const extra = [...dateFilters()];
+    const isGoogle    = { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'google' };
+    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ',            value: 'Qualified' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_term',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isGoogle, isQualified, ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isGoogle, isQualified, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  async function loadMoveInKeywords() {
+    const extra = [...dateFilters()];
+    const isGoogle = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_term',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, isGoogle, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  function kwLoaderForTab(tab) {
+    if (tab === 'qualified') return loadQualKeywords;
+    if (tab === 'movein')    return loadMoveInKeywords;
+    return loadKeywords;
+  }
+
+  // ── Meta UTM Content loaders ─────────────────────────────────
+  async function loadMetaContent() {
+    const extra = [...dateFilters()];
+    const isMeta = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_content',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isMeta, ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isMeta, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  async function loadQualMetaContent() {
+    const extra = [...dateFilters()];
+    const isMeta      = { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'meta' };
+    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ',            value: 'Qualified' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_content',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isMeta, isQualified, ...extra] },
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isMeta, isQualified, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  async function loadMoveInMetaContent() {
+    const extra = [...dateFilters()];
+    const isMeta = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' };
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        property: 'utm_content',
+        filterGroups: [
+          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, isMeta, ...extra] },
+        ],
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  function mcLoaderForTab(tab) {
+    if (tab === 'qualified') return loadQualMetaContent;
+    if (tab === 'movein')    return loadMoveInMetaContent;
+    return loadMetaContent;
+  }
+
+  async function loadMetaAdCpc() {
+    const body = { level: 'ad', datePreset: 'this_month' };
+    if (state.startDate && state.endDate) {
+      body.startDate = state.startDate; body.endDate = state.endDate;
+      delete body.datePreset;
+    }
+    const res = await fetch('/api/meta-ads-insights', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) return {};
+    const map = {};
+    for (const row of (data.data || [])) {
+      if (row.ad_name) map[row.ad_name.trim()] = parseFloat(row.cpc || 0);
+    }
+    return map;
+  }
+
+  function renderMetaContentTable(counts, cpcMap) {
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    if (!entries.length)
+      return '<div class="loading-msg" style="padding:20px 0">No data for selected range.</div>';
+    const total = entries.reduce((s, [, c]) => s + c, 0);
+    const hasCpc = Object.keys(cpcMap).length > 0;
+    const rows = entries.map(([term, count]) => {
+      const pct = total ? ((count / total) * 100).toFixed(1) + '%' : '';
+      const cpc = cpcMap[term] != null ? '₹' + cpcMap[term].toFixed(2) : '—';
+      return `<div class="kw-row">
+        <span class="kw-term" title="${term}">${term}</span>
+        <span class="kw-count">${count.toLocaleString()}</span>
+        <span class="kw-pct">${pct}</span>
+        ${hasCpc ? `<span class="kw-cpc">${cpc}</span>` : ''}
+      </div>`;
+    }).join('');
+    return `
+      <div class="kw-head">
+        <span>UTM Content</span>
+        <span style="display:flex;gap:0">
+          <span style="min-width:40px;text-align:right">Leads</span>
+          <span style="min-width:52px;text-align:right;padding-left:10px">Share</span>
+          ${hasCpc ? '<span style="min-width:54px;text-align:right;padding-left:10px">CPC</span>' : ''}
+        </span>
+      </div>
+      <div class="kw-body">${rows}</div>`;
+  }
+
+  let _mcGen = 0;
+
+  function reloadMetaContentTab(bustCache) {
+    if (bustCache) delete mcCache[mcTab];
+    if (Object.prototype.hasOwnProperty.call(mcCache, mcTab)) {
+      const { counts, cpcMap } = mcCache[mcTab];
+      document.getElementById('meta-content-content').innerHTML =
+        renderMetaContentTable(counts, cpcMap);
+      return;
+    }
+    const gen = ++_mcGen;
+    document.getElementById('meta-content-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    Promise.all([mcLoaderForTab(mcTab)(), loadMetaAdCpc()])
+      .then(([counts, cpcMap]) => {
+        if (_mcGen !== gen) return;
+        mcCache[mcTab] = { counts, cpcMap };
+        document.getElementById('meta-content-content').innerHTML =
+          renderMetaContentTable(counts, cpcMap);
+      })
+      .catch(err => {
+        if (_mcGen !== gen) return;
+        document.getElementById('meta-content-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  let areasTab   = 'organic'; // 'organic' | 'inorganic'
+  const areasCache = {};
+
+  // Organic  = preferred_area set + utm_source not set (unknown/direct traffic)
+  // Inorganic = preferred_area set + utm_source is meta or google (two filterGroups to avoid IN bug)
+  async function loadAreas(mode) {
+    const extra  = [...dateFilters()];
+    const hasArea = { propertyName: 'preferred_area', operator: 'HAS_PROPERTY' };
+    let filterGroups;
+    if (mode === 'inorganic') {
+      // preferred_area is only set on leads, so customer_type filter is redundant here.
+      // 2 filterGroups (meta OR google) instead of 4 avoids potential HubSpot filterGroup limits.
+      filterGroups = [
+        { filters: [hasArea, { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' },   ...extra] },
+        { filters: [hasArea, { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' }, ...extra] },
+      ];
+    } else {
+      const noUtm = { propertyName: 'utm_source', operator: 'NOT_HAS_PROPERTY' };
+      filterGroups = [
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      hasArea, noUtm, ...extra] },
+        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, hasArea, noUtm, ...extra] },
+      ];
+    }
+    const res = await fetch('/api/hs-utm-agg', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ property: 'preferred_area', filterGroups }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.counts || {};
+  }
+
+  function reloadAreasTab(bustCache) {
+    if (bustCache) delete areasCache[areasTab];
+    if (Object.prototype.hasOwnProperty.call(areasCache, areasTab)) {
+      document.getElementById('areas-content').innerHTML = renderTermTable(areasCache[areasTab], 'Area', 'Leads');
+      return;
+    }
+    const gen = ++_areasGen;
+    document.getElementById('areas-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    loadAreas(areasTab)
+      .then(counts => {
+        if (_areasGen !== gen) return;
+        areasCache[areasTab] = counts;
+        document.getElementById('areas-content').innerHTML = renderTermTable(counts, 'Area', 'Leads');
+      })
+      .catch(err => {
+        if (_areasGen !== gen) return;
+        document.getElementById('areas-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  function renderTermTable(counts, termLabel, countLabel, showPct) {
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    if (!entries.length)
+      return '<div class="loading-msg" style="padding:20px 0">No data for selected range.</div>';
+    const total = showPct ? entries.reduce((s, [, c]) => s + c, 0) : 0;
+    const rows = entries.map(([term, count]) => {
+      const pct = showPct && total ? ((count / total) * 100).toFixed(1) + '%' : '';
+      return `<div class="kw-row">
+        <span class="kw-term" title="${term}">${term}</span>
+        <span class="kw-count">${count.toLocaleString()}</span>
+        ${showPct ? `<span class="kw-pct">${pct}</span>` : ''}
+      </div>`;
+    }).join('');
+    return `
+      <div class="kw-head">
+        <span>${termLabel || 'Term'}</span>
+        <span style="display:flex;gap:0">${showPct ? '<span style="min-width:40px;text-align:right">Leads</span><span style="min-width:52px;text-align:right;padding-left:10px">Share</span>' : `<span>${countLabel || 'Count'}</span>`}</span>
+      </div>
+      <div class="kw-body">${rows}</div>`;
+  }
+
+  function renderKeywords(counts) {
+    return renderTermTable(counts, 'UTM Term', 'Leads', true);
+  }
+
+  function reloadKeywordsTab(bustCache) {
+    if (bustCache) delete kwCache[kwTab];
+    if (Object.prototype.hasOwnProperty.call(kwCache, kwTab)) {
+      document.getElementById('keywords-content').innerHTML = renderKeywords(kwCache[kwTab]);
+      return;
+    }
+    const gen = ++_keywordsGen;
+    document.getElementById('keywords-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    kwLoaderForTab(kwTab)()
+      .then(counts => {
+        if (_keywordsGen !== gen) return;
+        kwCache[kwTab] = counts;
+        document.getElementById('keywords-content').innerHTML = renderKeywords(counts);
+      })
+      .catch(err => {
+        if (_keywordsGen !== gen) return;
+        document.getElementById('keywords-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  // ── Meta Cost Efficiency ────────────────────────────────────
+  let _funnelStages   = null;
+  let _metaSpendTotal = null;
+
+  function tryRenderMetaCost() {
+    if (!isMetaFilter()) return;
+    if (_funnelStages === null || _metaSpendTotal === null) return;
+    const find = label => (_funnelStages.find(s => s.label === label) || {}).count || 0;
+    const spend     = _metaSpendTotal;
+    const leads     = find('Total Leads');
+    const qualified = find('Qualified Leads');
+    const movein    = find('Move-In');
+    const fmt = n => n > 0 ? '₹' + Math.round(n).toLocaleString('en-IN') : '—';
+    const metrics = [
+      { label: 'Cost Per Lead',           value: fmt(leads     ? spend / leads     : 0), sub: `${leads.toLocaleString('en-IN')} leads`,           color: '#008E75' },
+      { label: 'Cost Per Qualified Lead', value: fmt(qualified ? spend / qualified : 0), sub: `${qualified.toLocaleString('en-IN')} qualified`,    color: '#F59E50' },
+      { label: 'Cost Per Move-In',        value: fmt(movein    ? spend / movein    : 0), sub: `${movein.toLocaleString('en-IN')} move-ins`,        color: '#9B8FD4' },
+    ];
+    document.getElementById('meta-cost-content').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">
+        ${metrics.map((m, i) => `
+          <div style="text-align:center;padding:0 16px;${i > 0 ? 'border-left:1px solid var(--border)' : ''}">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+              color:var(--muted);margin-bottom:8px">${m.label}</div>
+            <div style="font-size:36px;font-weight:800;letter-spacing:-.03em;color:${m.color}">${m.value}</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--subtle)">${m.sub}</div>
+          </div>`).join('')}
+      </div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);
+        font-size:12px;color:var(--muted);text-align:center">
+        Total Meta Spend: <strong style="color:var(--ink)">₹${Math.round(spend).toLocaleString('en-IN')}</strong>
+      </div>`;
+  }
+
+  function setMetaCostVisible(visible) {
+    document.getElementById('meta-cost-section').style.display = visible ? '' : 'none';
+  }
+
+  // ── Weekly Trend ─────────────────────────────────────────────
+  let _weeklyGen = 0;
+  let _weeklyMetric = 'visitors';
+
+  function weeklyDateFilters() {
+    if (state.startDate && state.endDate) return dateFilters();
+    // Default: last 12 weeks
+    const now = new Date();
+    const twelveWeeksMs = 12 * 7 * 24 * 60 * 60 * 1000;
+    const from = new Date(now.getTime() - twelveWeeksMs);
+    return [
+      { propertyName: 'createdate', operator: 'GTE', value: String(from.getTime()) },
+      { propertyName: 'createdate', operator: 'LTE', value: String(now.getTime()) },
+    ];
+  }
+
+  function weeklyDateRange() {
+    if (state.startDate && state.endDate) return { start: state.startDate, end: state.endDate };
+    const now = new Date();
+    const from = new Date(now.getTime() - 12 * 7 * 24 * 60 * 60 * 1000);
+    return { start: from.toISOString().slice(0, 10), end: now.toISOString().slice(0, 10) };
+  }
+
+  function monStartOf(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const day = d.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setUTCDate(d.getUTCDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+
+  async function loadWebWeekly() {
+    const { start, end } = weeklyDateRange();
+    let q = WEB_SB.from('web_daily').select('d,visitors').gte('d', start).lte('d', end);
+    const { data } = await q;
+    const weeks = {};
+    (data || []).forEach(r => {
+      const wk = monStartOf(r.d);
+      weeks[wk] = (weeks[wk] || 0) + (+r.visitors || 0);
+    });
+    return weeks;
+  }
+
+  async function loadHsWeekly(filterGroups) {
+    const res = await fetch('/api/hs-weekly', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filterGroups }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || JSON.stringify(data));
+    return data.weeks || {};
+  }
+
+  function weeklyFilterGroups(metric) {
+    const df = weeklyDateFilters();
+    const base = (extra) => [
+      { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      ...extra, ...df] },
+      { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, ...extra, ...df] },
+    ];
+    if (metric === 'leads')    return base([]);
+    if (metric === 'qualified') return base([{ propertyName: 'hs_lead_status', operator: 'EQ', value: 'Qualified' }]);
+    if (metric === 'movein')   return [{ filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, ...df] }];
+    return [];
+  }
+
+  function renderWeeklyChart(weeksObj, color) {
+    const sorted = Object.entries(weeksObj).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!sorted.length) return '<div class="loading-msg" style="padding:40px 0">No data for this period.</div>';
+
+    const W = 680, H = 180, PL = 44, PR = 12, PT = 14, PB = 36;
+    const cW = W - PL - PR, cH = H - PT - PB;
+    const counts = sorted.map(([, c]) => c);
+    const max = Math.max(...counts, 1);
+    const n = sorted.length;
+
+    const xp = i => PL + (n < 2 ? cW / 2 : (i / (n - 1)) * cW);
+    const yp = v => PT + (1 - v / max) * cH;
+
+    const pts = sorted.map(([, c], i) => `${xp(i).toFixed(1)},${yp(c).toFixed(1)}`);
+    const line = 'M ' + pts.join(' L ');
+    const area = `M ${xp(0).toFixed(1)},${(PT + cH).toFixed(1)} L ${pts.join(' L ')} L ${xp(n - 1).toFixed(1)},${(PT + cH).toFixed(1)} Z`;
+
+    const gridVals = [0, 0.25, 0.5, 0.75, 1].map(f => ({ y: PT + (1 - f) * cH, val: Math.round(f * max) }));
+
+    const xLabels = sorted.map(([wk], i) => {
+      if (n > 14 && i % 2 !== 0) return '';
+      const d = new Date(wk + 'T00:00:00Z');
+      return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+    });
+
+    const dots = sorted.map(([wk, c], i) => {
+      const cx = xp(i).toFixed(1), cy = yp(c).toFixed(1);
+      const label = new Date(wk + 'T00:00:00Z').toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+      return `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${color}" stroke="#fff" stroke-width="2">
+        <title>Week of ${label}: ${c.toLocaleString('en-IN')}</title></circle>`;
+    }).join('');
+
+    const countLabels = n <= 16 ? sorted.map(([, c], i) => {
+      const above = yp(c) - PT > 18;
+      return `<text x="${xp(i).toFixed(1)}" y="${(yp(c) + (above ? -10 : 14)).toFixed(1)}"
+        text-anchor="middle" font-size="10" font-weight="700" fill="${color}">${c > 0 ? c : ''}</text>`;
+    }).join('') : '';
+
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible"
+        font-family="Plus Jakarta Sans,sans-serif">
+      ${gridVals.map(g => `
+        <line x1="${PL}" y1="${g.y.toFixed(1)}" x2="${W - PR}" y2="${g.y.toFixed(1)}"
+          stroke="var(--border)" stroke-width="1"/>
+        <text x="${PL - 6}" y="${(g.y + 4).toFixed(1)}" text-anchor="end"
+          font-size="10" fill="var(--muted)">${g.val.toLocaleString('en-IN')}</text>
+      `).join('')}
+      <path d="${area}" fill="${color}" opacity=".12"/>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="2.5"
+        stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${countLabels}
+      ${xLabels.map((lbl, i) => lbl ? `
+        <text x="${xp(i).toFixed(1)}" y="${H - 4}" text-anchor="middle"
+          font-size="10" fill="var(--muted)">${lbl}</text>` : '').join('')}
+    </svg>`;
+  }
+
+  async function _loadWeeklyMetric(metric) {
+    if (metric === 'visitors') return loadWebWeekly();
+    return loadHsWeekly(weeklyFilterGroups(metric));
+  }
+
+  function reloadWeeklyTrend() {
+    const gen = ++_weeklyGen;
+    const el = document.getElementById('weekly-chart-content');
+    el.innerHTML = '<div class="loading-msg">Loading…</div>';
+    const btn = document.querySelector(`#weekly-toggle [data-metric="${_weeklyMetric}"]`);
+    const color = (btn && btn.dataset.color) || '#5B9BD5';
+    _loadWeeklyMetric(_weeklyMetric)
+      .then(weeks => {
+        if (_weeklyGen !== gen) return;
+        el.innerHTML = renderWeeklyChart(weeks, color);
+      })
+      .catch(err => {
+        if (_weeklyGen !== gen) return;
+        el.innerHTML = `<div class="error-msg" style="padding:20px 0">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  function setWeeklyTrendVisible(visible) {
+    document.getElementById('weekly-trend-section').style.display = visible ? '' : 'none';
+  }
+
+  // ── Google Spend ─────────────────────────────────────────────
+  let _metaSpendGen = 0;
+  let _googleSpendGen = 0;
+
+  async function loadGoogleSpend() {
+    const res = await fetch('/api/google-ads-spend', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate: state.startDate, endDate: state.endDate }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error((data.error && data.error.message) || JSON.stringify(data));
+    return data.results || [];
+  }
+
+  function renderGoogleSpend(rows) {
+    if (!rows.length)
+      return '<div class="loading-msg" style="padding:20px 0">No spend data for this period.</div>';
+
+    const fmt    = n => '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const fmtCpc = n => '₹' + Number(n / 1e6).toFixed(2);
+
+    let totalCost = 0, totalClicks = 0, totalImpr = 0;
+    const campaignRows = rows.map(r => {
+      const cost   = (r.metrics.costMicros || 0) / 1e6;
+      const clicks = r.metrics.clicks || 0;
+      const impr   = r.metrics.impressions || 0;
+      totalCost   += cost; totalClicks += clicks; totalImpr += impr;
+      return { name: r.campaign.name, cost, clicks, impr, cpc: r.metrics.averageCpc || 0 };
+    }).filter(r => r.cost > 0);
+
+    const blendedCpc = totalClicks ? (totalCost / totalClicks) : 0;
+
+    const statRow = (label, val) => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;
+        border-bottom:1px solid var(--border);font-size:13px;">
+        <span style="color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+          letter-spacing:.05em">${label}</span>
+        <span style="font-weight:700">${val}</span>
+      </div>`;
+
+    const campTable = campaignRows.length > 1 ? `
+      <div style="margin-top:14px">
+        <div class="kw-head"><span>Campaign</span><span>Spend</span></div>
+        <div class="kw-body">
+          ${campaignRows.map(r => `
+            <div class="kw-row">
+              <span class="kw-term" title="${r.name}">${r.name}</span>
+              <span class="kw-count">${fmt(r.cost)}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+
+    return `<div>
+      <div style="text-align:center;padding:20px 0 16px">
+        <div style="font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-.5px">${fmt(totalCost)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;text-transform:uppercase;
+          letter-spacing:.08em;font-weight:600">Total Spend</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        ${statRow('Clicks', totalClicks.toLocaleString('en-IN'))}
+        ${statRow('Impressions', totalImpr.toLocaleString('en-IN'))}
+        ${statRow('Avg. CPC', fmtCpc(totalClicks ? totalCost / totalClicks * 1e6 : 0))}
+      </div>
+      ${campTable}
+    </div>`;
+  }
+
+  function reloadGoogleSpend() {
+    const gen = ++_googleSpendGen;
+    document.getElementById('google-spend-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    loadGoogleSpend()
+      .then(rows => {
+        if (_googleSpendGen !== gen) return;
+        document.getElementById('google-spend-content').innerHTML = renderGoogleSpend(rows);
+      })
+      .catch(err => {
+        if (_googleSpendGen !== gen) return;
+        document.getElementById('google-spend-content').innerHTML =
+          `<div class="error-msg" style="padding:12px 0;font-size:12px">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  async function loadMetaSpend() {
+    const body = { datePreset: 'this_month' };
+    if (state.startDate && state.endDate) {
+      body.startDate = state.startDate; body.endDate = state.endDate;
+      delete body.datePreset;
+    }
+    const res = await fetch('/api/meta-ads-insights', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error((data.error && data.error.message) || JSON.stringify(data.error || data));
+    return data.data || [];
+  }
+
+  function renderMetaSpend(rows) {
+    if (!rows.length)
+      return '<div class="loading-msg" style="padding:20px 0">No spend data for this period.</div>';
+
+    const fmt    = n => '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    const fmtDec = n => '₹' + Number(n).toFixed(2);
+
+    let totalSpend = 0, totalClicks = 0, totalImpr = 0, totalReach = 0;
+    const campaignRows = rows.map(r => {
+      const spend  = parseFloat(r.spend  || 0);
+      const clicks = parseInt(r.clicks   || 0, 10);
+      const impr   = parseInt(r.impressions || 0, 10);
+      const reach  = parseInt(r.reach    || 0, 10);
+      totalSpend  += spend; totalClicks += clicks; totalImpr += impr; totalReach += reach;
+      return { name: r.campaign_name, spend, clicks, impr };
+    }).filter(r => r.spend > 0).sort((a, b) => b.spend - a.spend);
+
+    const blendedCpc = totalClicks ? totalSpend / totalClicks : 0;
+    const cpm        = totalImpr   ? (totalSpend / totalImpr) * 1000 : 0;
+
+    const statRow = (label, val) => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;
+        border-bottom:1px solid var(--border);font-size:13px;">
+        <span style="color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+          letter-spacing:.05em">${label}</span>
+        <span style="font-weight:700">${val}</span>
+      </div>`;
+
+    const campTable = campaignRows.length > 1 ? `
+      <div style="margin-top:14px">
+        <div class="kw-head"><span>Campaign</span><span>Spend</span></div>
+        <div class="kw-body">
+          ${campaignRows.map(r => `
+            <div class="kw-row">
+              <span class="kw-term" title="${r.name}">${r.name}</span>
+              <span class="kw-count">${fmt(r.spend)}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+
+    return `<div>
+      <div style="text-align:center;padding:20px 0 16px">
+        <div style="font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-.5px">${fmt(totalSpend)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;text-transform:uppercase;
+          letter-spacing:.08em;font-weight:600">Total Spend</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        ${statRow('Clicks', totalClicks.toLocaleString('en-IN'))}
+        ${statRow('Impressions', totalImpr.toLocaleString('en-IN'))}
+        ${statRow('Reach', totalReach.toLocaleString('en-IN'))}
+        ${statRow('Avg. CPC', fmtDec(blendedCpc))}
+        ${statRow('CPM', fmtDec(cpm))}
+      </div>
+      ${campTable}
+    </div>`;
+  }
+
+  function reloadMetaSpend() {
+    const gen = ++_metaSpendGen;
+    document.getElementById('meta-spend-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    loadMetaSpend()
+      .then(rows => {
+        if (_metaSpendGen !== gen) return;
+        document.getElementById('meta-spend-content').innerHTML = renderMetaSpend(rows);
+        _metaSpendTotal = rows.reduce((s, r) => s + parseFloat(r.spend || 0), 0);
+        tryRenderMetaCost();
+      })
+      .catch(err => {
+        if (_metaSpendGen !== gen) return;
+        document.getElementById('meta-spend-content').innerHTML =
+          `<div class="error-msg" style="padding:12px 0;font-size:12px">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  function setMetaSpendVisible(visible) {
+    document.getElementById('meta-spend-panel').style.display = visible ? '' : 'none';
+  }
+
+  function reloadOrganicMovein() {
+    const gen = ++_organicMoveinGen;
+    document.getElementById('organic-movein-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    loadOrganicMovein()
+      .then(data => {
+        if (_organicMoveinGen !== gen) return;
+        document.getElementById('organic-movein-content').innerHTML = renderOrganicMovein(data);
+      })
+      .catch(err => {
+        if (_organicMoveinGen !== gen) return;
+        document.getElementById('organic-movein-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  function setOrganicMoveinVisible(visible) {
+    document.getElementById('organic-movein-section').style.display = visible ? '' : 'none';
+  }
+
+  function setKeywordsVisible(visible) {
+    document.getElementById('keywords-content').closest('.panel').style.display = visible ? '' : 'none';
+  }
+
+  function setAreasVisible(visible) {
+    document.getElementById('areas-content').closest('.panel').style.display = visible ? '' : 'none';
+  }
+
+  function setUtmBreakdownVisible(visible) {
+    document.getElementById('utm-content').closest('.panel').style.display = visible ? '' : 'none';
+  }
+
+  function setGoogleSpendVisible(visible) {
+    document.getElementById('google-spend-panel').style.display = visible ? '' : 'none';
+  }
+
+  function setMetaContentVisible(visible) {
+    document.getElementById('meta-content-content').closest('.panel').style.display = visible ? '' : 'none';
+  }
+
+  function isGoogleFilter() {
+    return state.utmSource.trim().toLowerCase().includes('google');
+  }
+
+  function isMetaFilter() {
+    return state.utmSource.trim().toLowerCase().includes('meta');
+  }
+
+  // ── Website stats (PostHog via Supabase web-analytics project) ──
+  const WEB_SB = supabase.createClient(
+    'https://egetjylmhdlbxcunoeoh.supabase.co',
+    'sb_publishable__xwGtcN6ik7ClQbQcC86QQ_h0hL9pIo'
+  );
+
+  let _webGen = 0;
+
+  async function loadWebStats() {
+    let dailyQ = WEB_SB.from('web_daily').select('pageviews,visitors,sessions');
+    let srcQ   = WEB_SB.from('web_sources').select('channel,sessions,submits');
+    if (state.startDate) { dailyQ = dailyQ.gte('d', state.startDate); srcQ = srcQ.gte('d', state.startDate); }
+    if (state.endDate)   { dailyQ = dailyQ.lte('d', state.endDate);   srcQ = srcQ.lte('d', state.endDate); }
+
+    const [{ data: daily, error: e1 }, { data: srcs, error: e2 }] =
+      await Promise.all([dailyQ, srcQ]);
+    if (e1 || e2) throw new Error((e1 || e2).message);
+
+    const totals = (daily || []).reduce((a, r) => ({
+      pageviews: a.pageviews + (+r.pageviews || 0),
+      visitors:  a.visitors  + (+r.visitors  || 0),
+      sessions:  a.sessions  + (+r.sessions  || 0),
+    }), { pageviews: 0, visitors: 0, sessions: 0 });
+
+    const srcMap = {};
+    for (const r of (srcs || [])) {
+      const ch = r.channel || 'Direct';
+      srcMap[ch] = srcMap[ch] || { sessions: 0, submits: 0 };
+      srcMap[ch].sessions += +r.sessions || 0;
+      srcMap[ch].submits  += +r.submits  || 0;
+    }
+    return { totals, srcMap };
+  }
+
+  function renderWebStats({ totals, srcMap }) {
+    const N = n => Number(n).toLocaleString('en-IN');
+    const statRow = (label, val) => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;
+        border-bottom:1px solid var(--border);font-size:13px;">
+        <span style="color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;
+          letter-spacing:.05em">${label}</span>
+        <span style="font-weight:700">${val}</span>
+      </div>`;
+
+    const srcEntries = Object.entries(srcMap).sort((a, b) => b[1].sessions - a[1].sessions);
+    const totalSessions = srcEntries.reduce((s, [, v]) => s + v.sessions, 0);
+
+    const srcTable = srcEntries.length ? `
+      <div style="margin-top:14px">
+        <div class="kw-head"><span>Channel</span><span style="display:flex;gap:0">
+          <span style="min-width:50px;text-align:right">Sessions</span>
+          <span style="min-width:52px;text-align:right;padding-left:10px">Share</span>
+        </span></div>
+        <div class="kw-body">
+          ${srcEntries.map(([ch, v]) => {
+            const pct = totalSessions ? ((v.sessions / totalSessions) * 100).toFixed(1) + '%' : '';
+            return `<div class="kw-row">
+              <span class="kw-term">${ch}</span>
+              <span class="kw-count">${N(v.sessions)}</span>
+              <span class="kw-pct">${pct}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+
+    return `<div>
+      <div style="text-align:center;padding:20px 0 16px">
+        <div style="font-size:36px;font-weight:800;color:var(--ink);letter-spacing:-.5px">${N(totals.sessions)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;text-transform:uppercase;
+          letter-spacing:.08em;font-weight:600">Sessions</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        ${statRow('Pageviews', N(totals.pageviews))}
+        ${statRow('Unique Visitors', N(totals.visitors))}
+      </div>
+      ${srcTable}
+    </div>`;
+  }
+
+  async function loadWebPages() {
+    let q = WEB_SB.from('web_top_pages').select('path,views');
+    if (state.startDate) q = q.gte('d', state.startDate);
+    if (state.endDate)   q = q.lte('d', state.endDate);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const agg = {};
+    for (const r of (data || [])) {
+      agg[r.path] = (agg[r.path] || 0) + (+r.views || 0);
+    }
+    return Object.entries(agg).sort((a, b) => b[1] - a[1]).slice(0, 20);
+  }
+
+  function renderWebPages(entries) {
+    if (!entries.length)
+      return '<div class="loading-msg" style="padding:20px 0">No data for selected range.</div>';
+    const N = n => Number(n).toLocaleString('en-IN');
+    return `
+      <div class="kw-head"><span>Page</span><span>Views</span></div>
+      <div class="kw-body" style="max-height:420px">
+        ${entries.map(([path, views]) => `
+          <div class="kw-row">
+            <span class="kw-term" title="${path}" style="font-size:12px;color:var(--muted)">${path}</span>
+            <span class="kw-count">${N(views)}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function setWebStatsVisible(visible) {
+    document.getElementById('web-funnel-section').style.display = visible ? '' : 'none';
+  }
+
+  function reloadWebStats() {
+    const gen = ++_webGen;
+    document.getElementById('web-stats-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    document.getElementById('web-pages-content').innerHTML = '<div class="loading-msg">Loading…</div>';
+    Promise.all([loadWebStats(), loadWebPages()])
+      .then(([stats, pages]) => {
+        if (_webGen !== gen) return;
+        document.getElementById('web-stats-content').innerHTML = renderWebStats(stats);
+        document.getElementById('web-pages-content').innerHTML = renderWebPages(pages);
+      })
+      .catch(err => {
+        if (_webGen !== gen) return;
+        document.getElementById('web-stats-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+        document.getElementById('web-pages-content').innerHTML =
+          `<div class="error-msg">&#9888; ${err.message}</div>`;
+      });
+  }
+
+  // Full refresh — clears all tab caches so re-fetch picks up new filters
+  function refresh() {
+    Object.keys(utmCache).forEach(k => delete utmCache[k]);
+    Object.keys(areasCache).forEach(k => delete areasCache[k]);
+    Object.keys(kwCache).forEach(k => delete kwCache[k]);
+    Object.keys(mcCache).forEach(k => delete mcCache[k]);
+    reloadFunnel();
+    if (!state.utmSource.trim()) reloadUTMTab(false);
+    if (!state.utmSource.trim()) reloadAreasTab(false);
+    if (isGoogleFilter()) reloadKeywordsTab(false);
+    if (isGoogleFilter()) reloadGoogleSpend();
+    if (isMetaFilter())   reloadMetaSpend();
+    if (isMetaFilter())   reloadMetaContentTab(false);
+    if (!state.utmSource.trim()) reloadOrganicMovein();
+    if (!state.utmSource.trim()) reloadWeeklyTrend();
+    reloadWebStats();
+  }
+
+  // Weekly trend toggle
+  document.getElementById('weekly-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn || btn.dataset.metric === _weeklyMetric) return;
+    _weeklyMetric = btn.dataset.metric;
+    document.querySelectorAll('#weekly-toggle .toggle-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    reloadWeeklyTrend();
+  });
+
+  // Toggle clicks — switch tab, use cache if available
+  document.getElementById('utm-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn || btn.dataset.tab === utmTab) return;
+    utmTab = btn.dataset.tab;
+    document.querySelectorAll('#utm-toggle .toggle-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    reloadUTMTab(false);
+  });
+
+  // Keywords toggle
+  document.getElementById('kw-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn || btn.dataset.tab === kwTab) return;
+    kwTab = btn.dataset.tab;
+    document.querySelectorAll('#kw-toggle .toggle-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    reloadKeywordsTab(false);
+  });
+
+  // Meta UTM Content toggle
+  document.getElementById('mc-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn || btn.dataset.tab === mcTab) return;
+    mcTab = btn.dataset.tab;
+    document.querySelectorAll('#mc-toggle .toggle-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    reloadMetaContentTab(false);
+  });
+
+  // Areas toggle
+  document.getElementById('areas-toggle').addEventListener('click', e => {
+    const btn = e.target.closest('.toggle-btn');
+    if (!btn || btn.dataset.tab === areasTab) return;
+    areasTab = btn.dataset.tab;
+    document.querySelectorAll('#areas-toggle .toggle-btn').forEach(b =>
+      b.classList.toggle('active', b === btn));
+    reloadAreasTab(false);
+  });
+
+  document.getElementById('reload-funnel').addEventListener('click', reloadFunnel);
+  document.getElementById('reload-utm').addEventListener('click', () => reloadUTMTab(true));
+  document.getElementById('reload-organic-movein').addEventListener('click', reloadOrganicMovein);
+  document.getElementById('reload-keywords').addEventListener('click', () => reloadKeywordsTab(true));
+  document.getElementById('reload-meta-content').addEventListener('click', () => reloadMetaContentTab(true));
+  document.getElementById('reload-web-stats').addEventListener('click', reloadWebStats);
+  document.getElementById('reload-meta-spend').addEventListener('click', reloadMetaSpend);
+  document.getElementById('reload-google-spend').addEventListener('click', reloadGoogleSpend);
+  document.getElementById('reload-areas').addEventListener('click', () => reloadAreasTab(true));
+
+  updateDateLabel(); // show restored filter in chip before first data load
+  const _initFiltered = state.utmSource.trim().length > 0;
+  setUtmBreakdownVisible(!_initFiltered);
+  setOrganicMoveinVisible(!_initFiltered);
+  setWebStatsVisible(!_initFiltered);
+  setKeywordsVisible(isGoogleFilter());
+  setGoogleSpendVisible(isGoogleFilter());
+  setMetaSpendVisible(isMetaFilter());
+  setMetaContentVisible(isMetaFilter());
+  setMetaCostVisible(isMetaFilter());
+  setWeeklyTrendVisible(!_initFiltered);
+  setAreasVisible(!_initFiltered);
+  refresh();
+  populateUtmDropdown();
+})();
+</script>
+</body>
+</html>
