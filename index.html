@@ -444,6 +444,16 @@
     '#60C4D4','#70B9A5','#F4A261','#C64747','#A8C8E8',
   ];
 
+  // HTML-escape helper — used whenever CRM data is inserted into innerHTML
+  function h(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // ── State ────────────────────────────────────────────────────
   const state = { startDate: null, endDate: null, utmSource: '' };
 
@@ -489,8 +499,17 @@
     }
   });
   document.getElementById('date-apply').addEventListener('click', () => {
-    state.startDate = dateFrom.value || null;
-    state.endDate   = dateTo.value   || null;
+    const from = dateFrom.value || null;
+    const to   = dateTo.value   || null;
+    if (from && to && from > to) {
+      dateFrom.style.outline = '2px solid #DC2626';
+      dateTo.style.outline   = '2px solid #DC2626';
+      return; // refuse to apply invalid range
+    }
+    dateFrom.style.outline = '';
+    dateTo.style.outline   = '';
+    state.startDate = from;
+    state.endDate   = to;
     updateDateLabel();
     saveFilter();
     datePopover.classList.remove('open');
@@ -544,60 +563,16 @@
     // Skip background scan if cache is fresh enough
     if (cached && cached.cachedAt && Date.now() - cached.cachedAt < CACHE_TTL) return;
 
-    // Full scan to build / refresh the cache
-    const searchBody = {
-      filterGroups: [
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }] },
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }] },
-      ],
-      properties: ['utm_source'],
-      limit: 200,
-    };
-    const found = new Set();
-
-    function harvest(pages) {
-      let added = false;
-      for (const pg of pages)
-        for (const c of (pg.results || []))
-          if (c.properties && c.properties.utm_source) {
-            const s = c.properties.utm_source.trim();
-            if (s) { found.add(s); added = true; }
-          }
-      if (added) applySources([...found].sort());
-    }
-
+    // Fetch all unique utmSource values from Hawkeye via hw-utm-agg (no filter = all time)
     try {
-      const first = await fetch('/api/hs-search', {
+      const res  = await fetch('/api/hw-utm-agg', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchBody),
-      }).then(r => r.json()).catch(() => ({ results: [] }));
-      harvest([first]);
-
-      const total = first.total || 0;
-      if (total > 200) {
-        const offsets = Array.from(
-          { length: Math.min(Math.ceil((total - 200) / 200), 49) },
-          (_, i) => (i + 1) * 200
-        );
-        for (let i = 0; i < offsets.length; i += 4) {
-          const pages = await Promise.all(
-            offsets.slice(i, i + 4).map(after =>
-              fetch('/api/hs-search', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...searchBody, after }),
-              }).then(r => r.json()).catch(() => ({ results: [] }))
-            )
-          );
-          harvest(pages);
-          if (i + 4 < offsets.length) await new Promise(r => setTimeout(r, 300));
-        }
-      }
-
-      // Save complete list to localStorage
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        sources: [...found].filter(Boolean).sort(),
-        cachedAt: Date.now(),
-      }));
+        body: JSON.stringify({ property: 'utmSource' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const found = Object.keys(data.counts || {}).filter(s => s && s !== 'Organic').sort();
+      if (found.length) applySources(found);
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ sources: found, cachedAt: Date.now() }));
     } catch (e) { /* silently skip */ }
   }
 
@@ -622,72 +597,55 @@
   // ── Reload button ────────────────────────────────────────────
   document.getElementById('reload-btn').addEventListener('click', () => refresh());
 
-  // ── HubSpot: date + utm filters ──────────────────────────────
-  function dateFilters() {
-    const f = [];
-    // Use UTC midnight so the range isn't shifted by the user's local timezone offset
-    if (state.startDate)
-      f.push({ propertyName: 'createdate', operator: 'GTE',
-               value: String(new Date(state.startDate + 'T00:00:00.000Z').getTime()) });
-    if (state.endDate)
-      f.push({ propertyName: 'createdate', operator: 'LTE',
-               value: String(new Date(state.endDate + 'T23:59:59.999Z').getTime()) });
+  // ── Hawkeye (Twenty CRM): date + utm filters ─────────────────
+  function dateFilter() {
+    const f = {};
+    // Guard: only send date filter when both bounds are present and start <= end
+    if (state.startDate && state.endDate && state.startDate <= state.endDate) {
+      f.startDate = state.startDate;
+      f.endDate   = state.endDate;
+    } else if (state.startDate && !state.endDate) {
+      f.startDate = state.startDate;
+    } else if (state.endDate && !state.startDate) {
+      f.endDate = state.endDate;
+    }
     return f;
   }
 
-  // Uses two filterGroups (OR'd) so HubSpot never needs the IN operator.
-  // The IN operator intermittently returns 0 when combined with other property filters.
-  // tenantOnly=true restricts to customer_type=Tenant only (used for Move-In metric).
-  function buildQuery(stageFilters, tenantOnly) {
-    const extra = [...dateFilters()];
-    if (state.utmSource.trim())
-      extra.push({ propertyName: 'utm_source', operator: 'CONTAINS_TOKEN',
-                   value: state.utmSource.trim() });
-    const g1 = { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      ...stageFilters, ...extra] };
-    if (tenantOnly)
-      return { filterGroups: [g1], limit: 1, properties: ['createdate'] };
-    const g2 = { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, ...stageFilters, ...extra] };
-    return { filterGroups: [g1, g2], limit: 1, properties: ['createdate'] };
+  // Build the base filter for all funnel queries.
+  // mergeIn is an object of extra Hawkeye filter fields (leadstatus, tenantLifecycle, etc.)
+  function buildHwFilter(mergeIn) {
+    const f = { ...dateFilter() };
+    if (state.utmSource.trim()) f.utmContains = state.utmSource.trim();
+    return Object.assign(f, mergeIn || {});
   }
 
-  // Low-level: sends a pre-built query body, retries up to 3× on 429.
-  async function _fetchCount(body, attempt) {
-    attempt = attempt || 0;
-    const res = await fetch('/api/hs-search', {
+  // Fetch with a 20-second timeout using AbortController.
+  function fetchWithTimeout(url, opts, ms) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms || 20000);
+    return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(id));
+  }
+
+  // Fetch count from Hawkeye backend.
+  async function fetchHwCount(filterObj) {
+    const res  = await fetchWithTimeout('/api/hw-count', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(filterObj),
     });
     const data = await res.json();
-    if (res.status === 429 && attempt < 3) {
-      await new Promise(r => setTimeout(r, 800 + attempt * 600));
-      return _fetchCount(body, attempt + 1);
-    }
-    if (data.error) throw new Error(data.error);
-    return typeof data.total === 'number' ? data.total : 0;
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    return data.total || 0;
   }
 
-  // Standard funnel query: two filterGroups (Tenant OR Tenant Lead) + stage filters.
-  function fetchCount(stageFilters, tenantOnly) {
-    return _fetchCount(buildQuery(stageFilters, tenantOnly));
+  // Convenience wrappers matching the original funnel call signatures.
+  function fetchCount(stageFilter) {
+    return fetchHwCount(buildHwFilter(stageFilter));
   }
 
-  // Callback Requested: the property stores both 'true' (boolean) and 'Yes' (legacy text)
-  // depending on how the entry was created. Use 4 EQ filterGroups to capture both values
-  // without any IN operator.
+  // Callback Requested: leads that came via direct call channel.
   function fetchCallbackCount() {
-    const extra = [...dateFilters()];
-    if (state.utmSource.trim())
-      extra.push({ propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: state.utmSource.trim() });
-    const cb = val => ({ propertyName: 'dw_callback_requested', operator: 'EQ', value: val });
-    return _fetchCount({
-      filterGroups: [
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      cb('true'), ...extra] },
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      cb('Yes'),  ...extra] },
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, cb('true'), ...extra] },
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, cb('Yes'),  ...extra] },
-      ],
-      limit: 1, properties: ['createdate'],
-    });
+    return fetchHwCount(buildHwFilter({ firstInquiryChannel: 'DIRECT_CALL' }));
   }
 
   async function loadFunnel() {
@@ -716,17 +674,23 @@
       }
     })();
 
-    const [total, callback, qualified, booked, completed, movein, webData] = await Promise.all([
-      fetchCount([]),
-      fetchCallbackCount(),  // captures both 'true' and 'Yes' stored values
-      fetchCount([{ propertyName: 'hs_lead_status',     operator: 'EQ', value: 'Qualified' }]),
-      fetchCount([{ propertyName: 'dw_visit_booked',    operator: 'EQ', value: 'true' }]),
-      fetchCount([{ propertyName: 'dw_visit_completed', operator: 'EQ', value: 'true' }]),
-      fetchCount([], true),  // Move-In: customer_type=Tenant only (excludes Tenant Lead)
+    const results = await Promise.allSettled([
+      fetchCount({}),
+      fetchCallbackCount(),
+      fetchCount({ leadstatus: 'QUALIFIED' }),
+      fetchCount({ hasVisits: true }),
+      fetchCount({ hasVisitsCompleted: true }),
+      fetchHwCount(buildHwFilter({ tenantLifecycle: 'CONVERTED' })),
       webDataPromise,
     ]);
+    const val = (r, fallback) => r.status === 'fulfilled' ? r.value : fallback;
+    const [total, callback, qualified, booked, completed, movein, webData] = results.map(r => val(r, null));
+
+    // Surface the first error prominently if Total Leads itself failed
+    if (results[0].status === 'rejected') throw results[0].reason;
+
     const stages = [];
-    if (webData) stages.push({ label: webData.label, count: webData.visitors });
+    if (webData) stages.push({ label: webData.label, count: webData.visitors || 0 });
     stages.push(
       { label: 'Total Leads',        count: total     },
       { label: 'Callback Requested', count: callback  },
@@ -739,46 +703,32 @@
   }
 
   // ── UTM pie chart data ───────────────────────────────────────
-  // Intentionally excludes utm_source filter so you always see the full breakdown.
-  // Uses a single filterGroup with IN for customer_type — safe here because we're
-  // only combining it with date filters (no other property filters). The IN-operator
-  // bug only triggers when IN is combined with a different property filter (e.g.
-  // hs_lead_status), which is why the funnel queries use two filterGroups instead.
-  async function loadUTM() {
-    const filters = [
-      { propertyName: 'customer_type', operator: 'IN', values: ['Tenant', 'Tenant Lead'] },
-      ...dateFilters(),
-    ];
-    const res = await fetch('/api/hs-utm-agg', {
+  async function hwUtmAgg(extraFilter, property, isArrayField) {
+    const body = { ...dateFilter(), ...(extraFilter || {}), property: property || 'utmSource' };
+    if (isArrayField) body.isArrayField = true;
+    const res  = await fetchWithTimeout('/api/hw-utm-agg', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filterGroups: [{ filters }] }),
-    });
+      body: JSON.stringify(body),
+    }, 60000); // agg calls can take up to 60 s on large datasets
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
     return data.counts || {};
   }
 
-  // Qualified leads by UTM source — uses two filterGroups (Tenant OR Tenant Lead)
-  // instead of IN to avoid the IN-operator bug when combined with hs_lead_status.
+  // All leads UTM source breakdown (no stage filter, always shows full source mix)
+  async function loadUTM() {
+    return hwUtmAgg({});
+  }
+
+  // Qualified leads by UTM source
   async function loadQualUTM() {
-    const extra = [...dateFilters()];
-    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ', value: 'Qualified' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isQualified, ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isQualified, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ leadstatus: 'QUALIFIED' });
   }
 
   // ── Funnel SVG rendering ─────────────────────────────────────
   function renderFunnel(stages) {
+    // Normalize null counts (from failed individual fetches) to 0 for rendering
+    stages = stages.map(s => ({ ...s, count: s.count == null ? 0 : s.count }));
     const VW = 1000, VH = 270, midY = VH / 2, maxH = VH * 0.86;
     const colW = VW / stages.length;
     const base = stages[0].count || 1;
@@ -837,7 +787,7 @@
     return ((num / den) * 100).toFixed(1) + '%';
   }
   function updateMetrics(stages) {
-    const find = label => (stages.find(s => s.label === label) || {}).count || 0;
+    const find = label => { const s = stages.find(s => s.label === label); return s && s.count != null ? s.count : 0; };
     const total     = find('Total Leads');
     const qualified = find('Qualified Leads');
     const completed = find('Visits Completed');
@@ -928,7 +878,7 @@
     const legend = slices.map(s => `
       <div class="pie-row">
         <span class="pie-dot" style="background:${s.color}"></span>
-        <span class="pie-lbl" title="${s.label}">${s.label}</span>
+        <span class="pie-lbl" title="${h(s.label)}">${h(s.label)}</span>
         <span class="pie-n">${s.count.toLocaleString()}</span>
         <span class="pie-pct">${s.pct}%</span>
       </div>`).join('');
@@ -980,19 +930,9 @@
       });
   }
 
-  // Move-In leads by UTM source — customer_type=Tenant only (same scope as funnel move-in).
+  // Move-In leads by UTM source (tenantLifecycle = CONVERTED)
   async function loadMoveInUTM() {
-    const filters = [
-      { propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
-      ...dateFilters(),
-    ];
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filterGroups: [{ filters }] }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ tenantLifecycle: 'CONVERTED' });
   }
 
   function loaderForTab(tab) {
@@ -1022,25 +962,13 @@
       });
   }
 
-  // Fetches total move-ins (customer_type=Tenant) and inorganic move-ins
-  // (customer_type=Tenant AND utm_source contains 'meta' OR 'google').
-  // Two filterGroups for inorganic avoids the IN-operator + property-filter bug.
+  // Fetches total move-ins and inorganic move-ins (Meta + Google).
   // Does NOT apply state.utmSource (section is hidden when that filter is active).
   async function loadOrganicMovein() {
-    const extra = [...dateFilters()];
+    const df = dateFilter();
     const [totalMovein, inorganic] = await Promise.all([
-      fetchCount([], true),
-      _fetchCount({
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
-                      { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'meta' },
-                      ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },
-                      { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'google' },
-                      ...extra] },
-        ],
-        limit: 1, properties: ['createdate'],
-      }),
+      fetchHwCount({ ...df, tenantLifecycle: 'CONVERTED' }),
+      fetchHwCount({ ...df, tenantLifecycle: 'CONVERTED', orUtmSources: ['google', 'adwords', 'meta', 'ig'] }),
     ]);
     const organic = totalMovein - inorganic;
     return { totalMovein, inorganic, organic };
@@ -1072,60 +1000,17 @@
       </div>`;
   }
 
-  // Google utm_term aggregation — two filterGroups to avoid the IN-operator bug.
-  // Does not apply state.utmSource; always scoped to google regardless of the filter chip.
+  // Google utmTerm aggregation — always scoped to google regardless of filter chip.
   async function loadKeywords() {
-    const extra = [...dateFilters()];
-    const isGoogle = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_term',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isGoogle, ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isGoogle, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'google' }, 'utmTerm');
   }
 
   async function loadQualKeywords() {
-    const extra = [...dateFilters()];
-    const isGoogle    = { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'google' };
-    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ',            value: 'Qualified' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_term',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isGoogle, isQualified, ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isGoogle, isQualified, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'google', leadstatus: 'QUALIFIED' }, 'utmTerm');
   }
 
   async function loadMoveInKeywords() {
-    const extra = [...dateFilters()];
-    const isGoogle = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_term',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, isGoogle, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'google', tenantLifecycle: 'CONVERTED' }, 'utmTerm');
   }
 
   function kwLoaderForTab(tab) {
@@ -1136,57 +1021,15 @@
 
   // ── Meta UTM Content loaders ─────────────────────────────────
   async function loadMetaContent() {
-    const extra = [...dateFilters()];
-    const isMeta = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_content',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isMeta, ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isMeta, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'meta' }, 'utmContent');
   }
 
   async function loadQualMetaContent() {
-    const extra = [...dateFilters()];
-    const isMeta      = { propertyName: 'utm_source',    operator: 'CONTAINS_TOKEN', value: 'meta' };
-    const isQualified = { propertyName: 'hs_lead_status', operator: 'EQ',            value: 'Qualified' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_content',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      isMeta, isQualified, ...extra] },
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, isMeta, isQualified, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'meta', leadstatus: 'QUALIFIED' }, 'utmContent');
   }
 
   async function loadMoveInMetaContent() {
-    const extra = [...dateFilters()];
-    const isMeta = { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' };
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        property: 'utm_content',
-        filterGroups: [
-          { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, isMeta, ...extra] },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    return hwUtmAgg({ utmContains: 'meta', tenantLifecycle: 'CONVERTED' }, 'utmContent');
   }
 
   function mcLoaderForTab(tab) {
@@ -1224,10 +1067,10 @@
       const pct = total ? ((count / total) * 100).toFixed(1) + '%' : '';
       const cpc = cpcMap[term] != null ? '₹' + cpcMap[term].toFixed(2) : '—';
       return `<div class="kw-row">
-        <span class="kw-term" title="${term}">${term}</span>
+        <span class="kw-term" title="${h(term)}">${h(term)}</span>
         <span class="kw-count">${count.toLocaleString()}</span>
         <span class="kw-pct">${pct}</span>
-        ${hasCpc ? `<span class="kw-cpc">${cpc}</span>` : ''}
+        ${hasCpc ? `<span class="kw-cpc">${h(cpc)}</span>` : ''}
       </div>`;
     }).join('');
     return `
@@ -1272,32 +1115,12 @@
   const areasCache = {};
 
   // Organic  = preferred_area set + utm_source not set (unknown/direct traffic)
-  // Inorganic = preferred_area set + utm_source is meta or google (two filterGroups to avoid IN bug)
+  // Inorganic = orUtmSources includes google/adwords/meta/ig
   async function loadAreas(mode) {
-    const extra  = [...dateFilters()];
-    const hasArea = { propertyName: 'preferred_area', operator: 'HAS_PROPERTY' };
-    let filterGroups;
-    if (mode === 'inorganic') {
-      // preferred_area is only set on leads, so customer_type filter is redundant here.
-      // 2 filterGroups (meta OR google) instead of 4 avoids potential HubSpot filterGroup limits.
-      filterGroups = [
-        { filters: [hasArea, { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'meta' },   ...extra] },
-        { filters: [hasArea, { propertyName: 'utm_source', operator: 'CONTAINS_TOKEN', value: 'google' }, ...extra] },
-      ];
-    } else {
-      const noUtm = { propertyName: 'utm_source', operator: 'NOT_HAS_PROPERTY' };
-      filterGroups = [
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      hasArea, noUtm, ...extra] },
-        { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, hasArea, noUtm, ...extra] },
-      ];
-    }
-    const res = await fetch('/api/hs-utm-agg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ property: 'preferred_area', filterGroups }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.counts || {};
+    const extra = mode === 'inorganic'
+      ? { orUtmSources: ['google', 'adwords', 'meta', 'ig'] }
+      : {};
+    return hwUtmAgg(extra, 'preferredMicromarkets', true);
   }
 
   function reloadAreasTab(bustCache) {
@@ -1329,7 +1152,7 @@
     const rows = entries.map(([term, count]) => {
       const pct = showPct && total ? ((count / total) * 100).toFixed(1) + '%' : '';
       return `<div class="kw-row">
-        <span class="kw-term" title="${term}">${term}</span>
+        <span class="kw-term" title="${h(term)}">${h(term)}</span>
         <span class="kw-count">${count.toLocaleString()}</span>
         ${showPct ? `<span class="kw-pct">${pct}</span>` : ''}
       </div>`;
@@ -1409,18 +1232,6 @@
   let _weeklyGen = 0;
   let _weeklyMetric = 'visitors';
 
-  function weeklyDateFilters() {
-    if (state.startDate && state.endDate) return dateFilters();
-    // Default: last 12 weeks
-    const now = new Date();
-    const twelveWeeksMs = 12 * 7 * 24 * 60 * 60 * 1000;
-    const from = new Date(now.getTime() - twelveWeeksMs);
-    return [
-      { propertyName: 'createdate', operator: 'GTE', value: String(from.getTime()) },
-      { propertyName: 'createdate', operator: 'LTE', value: String(now.getTime()) },
-    ];
-  }
-
   function weeklyDateRange() {
     if (state.startDate && state.endDate) return { start: state.startDate, end: state.endDate };
     const now = new Date();
@@ -1448,26 +1259,23 @@
     return weeks;
   }
 
-  async function loadHsWeekly(filterGroups) {
-    const res = await fetch('/api/hs-weekly', {
+  async function loadHwWeekly(filter) {
+    const res = await fetchWithTimeout('/api/hw-weekly', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filterGroups }),
-    });
+      body: JSON.stringify(filter),
+    }, 90000); // weekly scan over 12 weeks of data can take up to 90 s
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || JSON.stringify(data));
     return data.weeks || {};
   }
 
-  function weeklyFilterGroups(metric) {
-    const df = weeklyDateFilters();
-    const base = (extra) => [
-      { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' },      ...extra, ...df] },
-      { filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant Lead' }, ...extra, ...df] },
-    ];
-    if (metric === 'leads')    return base([]);
-    if (metric === 'qualified') return base([{ propertyName: 'hs_lead_status', operator: 'EQ', value: 'Qualified' }]);
-    if (metric === 'movein')   return [{ filters: [{ propertyName: 'customer_type', operator: 'EQ', value: 'Tenant' }, ...df] }];
-    return [];
+  function weeklyFilter(metric) {
+    const { start, end } = weeklyDateRange();
+    const f = { startDate: start, endDate: end };
+    if (state.utmSource.trim() && metric !== 'movein') f.utmContains = state.utmSource.trim();
+    if (metric === 'qualified') f.leadstatus = 'QUALIFIED';
+    if (metric === 'movein')    f.tenantLifecycle = 'CONVERTED';
+    return f;
   }
 
   function renderWeeklyChart(weeksObj, color) {
@@ -1529,7 +1337,7 @@
 
   async function _loadWeeklyMetric(metric) {
     if (metric === 'visitors') return loadWebWeekly();
-    return loadHsWeekly(weeklyFilterGroups(metric));
+    return loadHwWeekly(weeklyFilter(metric));
   }
 
   function reloadWeeklyTrend() {
@@ -1768,11 +1576,11 @@
   }
 
   function isGoogleFilter() {
-    return state.utmSource.trim().toLowerCase().includes('google');
+    return /google|adwords/i.test(state.utmSource.trim());
   }
 
   function isMetaFilter() {
-    return state.utmSource.trim().toLowerCase().includes('meta');
+    return /meta|ig/i.test(state.utmSource.trim());
   }
 
   // ── Website stats (PostHog via Supabase web-analytics project) ──
