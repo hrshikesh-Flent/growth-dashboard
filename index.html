@@ -679,12 +679,13 @@
       fetchCallbackCount(),
       fetchCount({ leadstatus: 'QUALIFIED' }),
       fetchCount({ hasVisits: true }),
-      fetchCount({ hasVisitsCompleted: true }),
+      fetchCount({ visitCancelled: true }),
+      fetchCount({ visitCompleted: true }),
       fetchHwCount(buildHwFilter({ tenantLifecycle: 'CONVERTED' })),
       webDataPromise,
     ]);
     const val = (r, fallback) => r.status === 'fulfilled' ? r.value : fallback;
-    const [total, callback, qualified, booked, completed, movein, webData] = results.map(r => val(r, null));
+    const [total, callback, qualified, booked, cancelled, completed, movein, webData] = results.map(r => val(r, null));
 
     // Surface the first error prominently if Total Leads itself failed
     if (results[0].status === 'rejected') throw results[0].reason;
@@ -696,6 +697,7 @@
       { label: 'Callback Requested', count: callback  },
       { label: 'Qualified Leads',    count: qualified },
       { label: 'Visits Booked',      count: booked    },
+      { label: 'Visits Cancelled',   count: cancelled },
       { label: 'Visits Completed',   count: completed },
       { label: 'Move-In',            count: movein    },
     );

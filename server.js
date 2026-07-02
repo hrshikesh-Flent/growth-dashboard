@@ -114,6 +114,10 @@ function buildFilter(f) {
   if (f.hasVisits)          topParts.push(`totalVisitsCount: { gt: 0 }`);
   if (f.hasVisitsCompleted) topParts.push(`visitsCompleted: { gt: 0 }`);
 
+  // Boolean visit flags backfilled from HubSpot
+  if (f.visitCompleted) topParts.push(`visitCompleted: { eq: true }`);
+  if (f.visitCancelled) topParts.push(`visitCancelled: { eq: true }`);
+
   // OR filter for inorganic move-in (meta + google combined in one query)
   if (Array.isArray(f.orUtmSources) && f.orUtmSources.length) {
     const safe = f.orUtmSources.map(sanitizeStr).filter(Boolean).slice(0, 10);
